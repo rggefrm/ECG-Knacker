@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKG-Knacker App</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#005c97">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #e0eafc, #cfdef3);
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --primary: #005c97;
+            --primary-hover: #363795;
+            --green: #28a745;
+            --yellow: #ffc107;
+            --red: #dc3545;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--text-main);
+        }
+
+        .app-container {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 500px;
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 { color: var(--primary); margin-bottom: 20px; }
+        
+        .question { font-size: 1.2rem; margin-bottom: 20px; font-weight: bold; }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--primary);
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn:hover { background-color: var(--primary-hover); }
+        .btn-restart { background-color: #6c757d; margin-top: 20px; }
+        .btn-restart:hover { background-color: #5a6268; }
+
+        /* Visual Examples (SVGs) */
+        .visual-example {
+            margin: 15px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .visual-example svg { max-width: 100%; height: auto; }
+
+        /* Result Colors */
+        .result-box {
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-top: 20px;
+        }
+        .bg-green { background-color: var(--green); }
+        .bg-yellow { background-color: var(--yellow); color: #333; }
+        .bg-red { background-color: var(--red); }
+
+        #result-container { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <h1>EKG-Knacker</h1>
+        
+        <div id="question-container">
+            <div id="visual-container" class="visual-example" style="display: none;"></div>
+            <div class="question" id="question-text">Lädt...</div>
+            <div id="buttons-container"></div>
+        </div>
+
+        <div id="result-container">
+            <div class="question">Ergebnis / Diagnose:</div>
+            <div id="result-text" class="result-box"></div>
+            <button class="btn btn-restart" onclick="startApp()">Neues EKG bewerten</button>
+        </div>
+    </div>
+
+    <script>
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+
+        const state = {};
+
+        function startApp() {
+            state.rate = '';
+            state.rhythm = '';
+            state.qrs = '';
+            document.getElementById('result-container').style.display = 'none';
+            document.getElementById('question-container').style.display = 'block';
+            askRate();
+        }
+
+        function setVisual(svgCode) {
+            const vis = document.getElementById('visual-container');
+            if (svgCode) {
+                vis.innerHTML = svgCode;
+                vis.style.display = 'block';
+            } else {
+                vis.style.display = 'none';
+            }
+        }
+
+        function renderQuestion(text, buttons, svg = null) {
+            document.getElementById('question-text').innerText = text;
+            const btnContainer = document.getElementById('buttons-container');
+            btnContainer.innerHTML = '';
+            setVisual(svg);
+            
+            buttons.forEach(btn => {
+                const button = document.createElement('button');
+                button.className = 'btn';
+                button.innerText = btn.text;
+                button.onclick = btn.action;
+                btnContainer.appendChild(button);
+            });
+        }
+
+        function showResult(text, colorClass) {
+            document.getElementById('question-container').style.display = 'none';
+            const resultText = document.getElementById('result-text');
+            resultText.innerText = text;
+            resultText.className = 'result-box ' + colorClass;
+            document.getElementById('result-container').style.display = 'block';
+        }
+
+        // QRS SVG Example
+        const qrsVisual = `<svg viewBox="0 0 200 60"><path d="M10,30 L40,30 L50,10 L60,50 L70,30 L100,30" stroke="#005c97" stroke-width="3" fill="none"/><text x="110" y="35" font-size="12">Schmal (< 120ms)</text></svg>`;
+        
+        // P-Wave SVG Example
+        const pwaveVisual = `<svg viewBox="0 0 200 60"><path d="M10,30 L30,30 Q40,15 50,30 L60,30 L70,10 L80,50 L90,30 L120,30" stroke="#005c97" stroke-width="3" fill="none"/><text x="130" y="35" font-size="12">P-Welle sichtbar</text></svg>`;
+
+        // QUESTION LOGIC
+        function askRate() {
+            renderQuestion("1. Wie ist die Herzfrequenz?", [
+                { text: "Normal (60-100 / min)", action: () => { state.rate = 'normal'; askRhythm(); } },
+                { text: "Tachykard (>100 / min)", action: () => { state.rate = 'tachy'; askRhythm(); } },
+                { text: "Bradykard (<60 / min)", action: () => { state.rate = 'brady'; askRhythm(); } }
+            ]);
+        }
+
+        function askRhythm() {
+            renderQuestion("2. Ist der Rhythmus regelmäßig?", [
+                { text: "Regelmäßig", action: () => { state.rhythm = 'regular'; askQRS(); } },
+                { text: "Unregelmäßig", action: () => { state.rhythm = 'irregular'; askQRS(); } }
+            ]);
+        }
+
+        function askQRS() {
+            renderQuestion("3. Ist der QRS-Komplex schmal oder breit?", [
+                { text: "Schmal (< 0,12s / 3 kleine Kästchen)", action: () => { state.qrs = 'narrow'; askPWaves(); } },
+                { text: "Breit (≥ 0,12s)", action: () => { state.qrs = 'wide'; askPWaves(); } }
+            ], qrsVisual);
+        }
+
+        function askPWaves() {
+            renderQuestion("4. Sind P-Wellen vorhanden?", [
+                { text: "Ja, vor jedem QRS", action: () => { evaluateEKG('yes'); } },
+                { text: "Nein / nicht erkennbar", action: () => { evaluateEKG('no'); } },
+                { text: "Sägezahnmuster", action: () => { evaluateEKG('flutter'); } }
+            ], pwaveVisual);
+        }
+
+        function evaluateEKG(pWaves) {
+            // Basic Evaluation Logic with Color Coding
+            if (state.rate === 'normal' && state.rhythm === 'regular' && state.qrs === 'narrow' && pWaves === 'yes') {
+                showResult("Normofrequenter Sinusrhythmus.\nKeine akute Gefahr.", "bg-green");
+            } else if (state.rate === 'tachy' && state.qrs === 'wide') {
+                showResult("Achtung: Ventrikuläre Tachykardie (VT) möglich!\nNotarzt alarmieren / Defibrillator bereithalten!", "bg-red");
+            } else if (state.rhythm === 'irregular' && pWaves === 'no' && state.qrs === 'narrow') {
+                showResult("Verdacht auf Vorhofflimmern (Absolute Arrhythmie).\nÜberwachen, ggf. Arztvorstellung.", "bg-yellow");
+            } else if (state.rate === 'brady' && pWaves === 'yes' && state.qrs === 'wide') {
+                showResult("Schenkelblock mit Bradykardie. Ggf. AV-Block!\nMonitoring erforderlich.", "bg-yellow");
+            } else if (state.rate === 'tachy' && state.qrs === 'narrow' && pWaves === 'no') {
+                showResult("SVT (Supraventrikuläre Tachykardie).\nVagale Manöver erwägen, Notarzt!", "bg-red");
+            } else {
+                showResult("Auffälliges EKG. Bitte durch einen Arzt befunden lassen.", "bg-yellow");
+            }
+        }
+
+        // Start the app immediately
+        startApp();
+    </script>
+</body>
+</html>
