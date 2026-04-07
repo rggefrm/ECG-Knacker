@@ -19,82 +19,18 @@
             --yellow: #ffc107;
             --red: #dc3545;
         }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        body {
-            background: var(--bg-gradient);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            color: var(--text-main);
-        }
-
-        .app-container {
-            background: var(--card-bg);
-            width: 100%;
-            max-width: 500px;
-            border-radius: 15px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-            padding: 30px;
-            text-align: center;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: var(--bg-gradient); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; color: var(--text-main); }
+        .app-container { background: var(--card-bg); width: 100%; max-width: 500px; border-radius: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); padding: 30px; text-align: center; }
         h1 { color: var(--primary); margin-bottom: 20px; }
-        
         .question { font-size: 1.2rem; margin-bottom: 20px; font-weight: bold; }
-        
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            margin-bottom: 10px;
-            border: none;
-            border-radius: 8px;
-            background-color: var(--primary);
-            color: white;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
+        .btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; border: none; border-radius: 8px; background-color: var(--primary); color: white; font-size: 1rem; cursor: pointer; transition: background 0.3s; }
         .btn:hover { background-color: var(--primary-hover); }
-        
         .btn-back { background-color: var(--secondary); margin-top: 15px; }
         .btn-back:hover { background-color: var(--secondary-hover); }
-        
         .btn-restart { background-color: var(--text-main); margin-top: 15px; }
         .btn-restart:hover { background-color: #000; }
-
-        /* Visual Examples (SVGs) */
-        .visual-example {
-            margin: 15px 0;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            display: none;
-        }
-        .visual-example svg { max-width: 100%; height: auto; }
-
-        /* Result Colors */
-        .result-box {
-            padding: 20px;
-            border-radius: 10px;
-            color: white;
-            font-weight: bold;
-            font-size: 1.2rem;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            display: none;
-        }
+        .result-box { padding: 20px; border-radius: 10px; color: white; font-weight: bold; font-size: 1.2rem; margin-top: 20px; margin-bottom: 20px; display: none; }
         .bg-green { background-color: var(--green); }
         .bg-yellow { background-color: var(--yellow); color: #333; }
         .bg-red { background-color: var(--red); }
@@ -104,102 +40,78 @@
 
     <div class="app-container">
         <h1>EKG-Knacker</h1>
-        
-        <div id="visual-container" class="visual-example"></div>
         <div class="question" id="question-text">Lädt...</div>
         <div id="result-box" class="result-box"></div>
-        
         <div id="buttons-container"></div>
-        
         <button id="btn-back" class="btn btn-back" onclick="goBack()" style="display: none;">Zurück</button>
         <button id="btn-restart" class="btn btn-restart" onclick="restart()" style="display: none;">Neues EKG</button>
     </div>
 
     <script>
-        // Register Service Worker for PWA
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW setup failed'));
-        }
-
-        // SVG Graphics
-        const qrsVisual = `<svg viewBox="0 0 200 60"><path d="M10,30 L40,30 L50,10 L60,50 L70,30 L100,30" stroke="#005c97" stroke-width="3" fill="none"/><text x="110" y="35" font-size="12">Schmal (< 120ms)</text></svg>`;
-        const pwaveVisual = `<svg viewBox="0 0 200 60"><path d="M10,30 L30,30 Q40,15 50,30 L60,30 L70,10 L80,50 L90,30 L120,30" stroke="#005c97" stroke-width="3" fill="none"/><text x="130" y="35" font-size="12">P-Welle sichtbar</text></svg>`;
-
-        // Decision Tree Data
+        // Your Original Decision Tree Logic
         const ekgTree = {
-            start: {
-                question: "Wie ist die Herzfrequenz?",
+            "start": { 
+                q: "2. Ableitung ansehen. Erregung?", 
+                options: [ 
+                    { text: "Nein", next: "res_asystolie" }, 
+                    { text: "Ja", next: "q_regelmassig" } 
+                ] 
+            },
+            
+            "q_regelmassig": { 
+                q: "Gibt es irgendeine Regelmäßigkeit?", 
+                options: [ 
+                    { text: "Keinerlei! Regelmäßigkeit", next: "q_puls_keinerlei" }, 
+                    { text: "Irgendeine Regelmäßigkeit", next: "q_qrs_breite" } 
+                ] 
+            },
+            
+            "q_puls_keinerlei": { 
+                q: "Puls?", 
+                options: [ 
+                    { text: "Kein Puls", next: "res_kf" }, 
+                    { text: "Puls vorhanden", next: "res_artefakt" } 
+                ] 
+            },
+
+            "q_qrs_breite": {
+                q: "Ist der QRS-Komplex schmal oder breit?",
                 options: [
-                    { text: "Bradykard (< 60/min)", next: "brady_qrs" },
-                    { text: "Normofrequent (60-100/min)", next: "normo_rhythm" },
-                    { text: "Tachykard (> 100/min)", next: "tachy_qrs" }
+                    { text: "Schmal (≤ 120ms)", next: "q_p_wellen" },
+                    { text: "Breit (> 120ms)", next: "res_breitkomplex" }
+                ]
+            },
+
+            "q_p_wellen": {
+                q: "Sind P-Wellen vorhanden?",
+                options: [
+                    { text: "Ja, normale P-Wellen", next: "q_schmal_hf" },
+                    { text: "Regelmäßige Sägezahnwellen", next: "res_aflutter" },
+                    { text: "Keine erkennbaren P-Wellen, flimmernde Grundlinie", next: "res_afib" }
                 ]
             },
             
-            // --- NORMORHYTHM PATH ---
-            normo_rhythm: {
-                question: "Ist der Rhythmus regelmäßig?",
-                options: [
-                    { text: "Ja, regelmäßig", next: "normo_pwaves" },
-                    { text: "Nein, unregelmäßig", next: "normo_irregular" }
-                ]
-            },
-            normo_pwaves: {
-                question: "Sind P-Wellen vor jedem QRS-Komplex?",
-                svg: pwaveVisual,
-                options: [
-                    { text: "Ja", result: "Normofrequenter Sinusrhythmus.", color: "bg-green" },
-                    { text: "Nein", result: "Ersatzrhythmus oder AV-Block dritten Grades (wenn QRS breit). Arztvorstellung!", color: "bg-yellow" }
-                ]
-            },
-            normo_irregular: {
-                question: "Sind P-Wellen erkennbar?",
-                options: [
-                    { text: "Nein (Flimmerwellen)", result: "Vorhofflimmern (Normofrequent).", color: "bg-yellow" },
-                    { text: "Ja", result: "Sinusarrhythmie oder Extrasystolen (SVES/VES).", color: "bg-green" }
-                ]
+            "q_schmal_hf": { 
+                q: "Sinusrhythmus. Herzfrequenz/min?", 
+                options: [ 
+                    { text: "< 60", next: "res_sinus_brady" }, 
+                    { text: "60 - 100", next: "res_sinus_norm" }, 
+                    { text: "> 100", next: "res_sinus_tachy" }, 
+                    { text: "Variable Frequenz", next: "res_sinus_arrhythmie" } 
+                ] 
             },
 
-            // --- TACHYKARD PATH ---
-            tachy_qrs: {
-                question: "Ist der QRS-Komplex schmal oder breit?",
-                svg: qrsVisual,
-                options: [
-                    { text: "Schmal (< 0,12s)", next: "tachy_narrow_reg" },
-                    { text: "Breit (≥ 0,12s)", next: "tachy_wide_reg" }
-                ]
-            },
-            tachy_narrow_reg: {
-                question: "Ist der Rhythmus regelmäßig?",
-                options: [
-                    { text: "Regelmäßig (z.B. SVT, Sinustachykardie)", result: "Supraventrikuläre Tachykardie (SVT) / Sinustachykardie. Arzt hinzuziehen!", color: "bg-yellow" },
-                    { text: "Unregelmäßig", result: "Tachyarrhythmia absoluta (Vorhofflimmern mit schneller Überleitung).", color: "bg-yellow" }
-                ]
-            },
-            tachy_wide_reg: {
-                question: "Ist der Rhythmus regelmäßig?",
-                options: [
-                    { text: "Regelmäßig", result: "ACHTUNG: Ventrikuläre Tachykardie (VT)! Notarzt / Defi-Bereitschaft!", color: "bg-red" },
-                    { text: "Unregelmäßig", result: "ACHTUNG: Kammerflimmern oder Torsades de Pointes! Reanimation prüfen!", color: "bg-red" }
-                ]
-            },
-
-            // --- BRADYKARD PATH ---
-            brady_qrs: {
-                question: "Ist der QRS-Komplex schmal oder breit?",
-                svg: qrsVisual,
-                options: [
-                    { text: "Schmal (< 0,12s)", next: "brady_narrow_pwaves" },
-                    { text: "Breit (≥ 0,12s)", result: "Breitkomplex-Bradykardie. Verdacht auf kompletten AV-Block oder ventrikulären Ersatzrhythmus. Notarzt!", color: "bg-red" }
-                ]
-            },
-            brady_narrow_pwaves: {
-                question: "Stehen P-Wellen und QRS in festem Verhältnis?",
-                options: [
-                    { text: "Ja, 1:1", result: "Sinusbradykardie. Bei Symptomen Arztvorstellung.", color: "bg-green" },
-                    { text: "Nein, P-Wellen ohne QRS-Antwort", result: "AV-Block (II. oder III. Grades). Notarzt hinzuziehen!", color: "bg-red" }
-                ]
-            }
+            // RESULTS
+            "res_asystolie": { diag: "Asystolie. Reanimation beginnen!", color: "bg-red" },
+            "res_kf": { diag: "Kammerflimmern. Reanimation / Defibrillation!", color: "bg-red" },
+            "res_artefakt": { diag: "Bewegungsartefakte. EKG-Kabel prüfen.", color: "bg-yellow" },
+            "res_breitkomplex": { diag: "Breitkomplextachykardie / Schenkelblock. Arzt hinzuziehen!", color: "bg-yellow" },
+            "res_afib": { diag: "Vorhofflimmern (VHF). Absolute Arrhythmie. Frequenzkontrolle, Antikoagulation prüfen.", color: "bg-yellow" },
+            "res_aflutter": { diag: "Vorhofflattern. Oft 2:1 oder 3:1 Überleitung.", color: "bg-yellow" },
+            "res_sinus_brady": { diag: "Sinusbradykardie", color: "bg-green" },
+            "res_sinus_norm": { diag: "Normofrequenter Sinusrhythmus", color: "bg-green" },
+            "res_sinus_tachy": { diag: "Sinustachykardie", color: "bg-yellow" },
+            "res_sinus_arrhythmie": { diag: "Sinusarrhythmie", color: "bg-green" }
         };
 
         let appHistory = [];
@@ -209,59 +121,30 @@
             const stepData = ekgTree[currentStep];
             const qText = document.getElementById('question-text');
             const btnContainer = document.getElementById('buttons-container');
-            const visContainer = document.getElementById('visual-container');
             const resBox = document.getElementById('result-box');
             const backBtn = document.getElementById('btn-back');
             const restartBtn = document.getElementById('btn-restart');
 
-            // Reset UI
             btnContainer.innerHTML = '';
-            visContainer.style.display = 'none';
             resBox.style.display = 'none';
-            
-            // Back button visibility
-            if (appHistory.length > 0) {
-                backBtn.style.display = 'block';
-            } else {
-                backBtn.style.display = 'none';
-            }
+            backBtn.style.display = appHistory.length > 0 ? 'block' : 'none';
 
-            // Are we at a result?
-            if (stepData.result) {
-                qText.innerText = "Diagnose / Empfehlung:";
-                resBox.innerText = stepData.result;
-                resBox.className = "result-box " + stepData.color;
+            if (stepData.diag) {
+                qText.innerText = "Diagnose / Info:";
+                resBox.innerText = stepData.diag;
+                resBox.className = "result-box " + (stepData.color || "bg-yellow");
                 resBox.style.display = 'block';
                 restartBtn.style.display = 'block';
-                backBtn.style.display = 'block'; // Allow going back from result
             } else {
-                // We are at a question
-                qText.innerText = stepData.question;
+                qText.innerText = stepData.q;
                 restartBtn.style.display = 'none';
-
-                // Show SVG if it exists
-                if (stepData.svg) {
-                    visContainer.innerHTML = stepData.svg;
-                    visContainer.style.display = 'block';
-                }
-
-                // Create buttons
                 stepData.options.forEach(opt => {
                     const btn = document.createElement('button');
                     btn.className = 'btn';
                     btn.innerText = opt.text;
                     btn.onclick = () => {
                         appHistory.push(currentStep);
-                        // If it's a direct result
-                        if (opt.result) {
-                            ekgTree['temp_result'] = {
-                                result: opt.result,
-                                color: opt.color || "bg-yellow"
-                            };
-                            currentStep = 'temp_result';
-                        } else {
-                            currentStep = opt.next;
-                        }
+                        currentStep = opt.next;
                         render();
                     };
                     btnContainer.appendChild(btn);
@@ -282,7 +165,6 @@
             render();
         }
 
-        // Start App
         render();
     </script>
 </body>
