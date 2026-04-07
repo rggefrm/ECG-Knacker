@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKG-Knacker App</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#005c97">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #e0eafc, #cfdef3);
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --primary: #005c97;
+            --primary-hover: #363795;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--text-main);
+        }
+
+        .header { text-align: center; margin-bottom: 20px; color: var(--primary); }
+        
+        .app-container {
+            background: var(--card-bg); width: 100%; max-width: 650px;
+            border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            padding: 30px; position: relative;
+        }
+
+        .question-text {
+            font-size: 1.5rem; font-weight: 600; text-align: center;
+            margin-bottom: 25px; color: var(--primary);
+        }
+
+        .visual-example {
+            text-align: center; margin-bottom: 20px;
+        }
+        .visual-example svg { max-width: 150px; height: auto; stroke: var(--primary); }
+
+        .options-container { display: flex; flex-direction: column; gap: 15px; }
+
+        .btn {
+            background: #ffffff; border: 2px solid var(--primary);
+            color: var(--primary); font-size: 1.1rem; padding: 12px 20px;
+            border-radius: 8px; cursor: pointer; transition: all 0.2s;
+            font-weight: 500; text-align: center;
+        }
+        .btn:hover { background: var(--primary); color: white; }
+
+        .controls {
+            display: flex; justify-content: space-between;
+            margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;
+        }
+        .controls button {
+            background: none; border: none; color: #666; font-size: 1rem;
+            cursor: pointer; text-decoration: underline;
+        }
+
+        .diagnosis-box {
+            text-align: center; padding: 30px 20px; border-radius: 12px;
+            color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .diagnosis { font-size: 1.8rem; font-weight: bold; margin-top: 10px; }
+        
+        /* Color Coding Classes */
+        .color-green { background: #2ecc71; }
+        .color-yellow { background: #f1c40f; color: #333 !important; }
+        .color-orange { background: #e67e22; }
+        .color-red { background: #e74c3c; }
+        .color-blue { background: #3498db; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>EKG-Knacker</h1>
+        <p>Interaktiver Algorithmus</p>
+    </div>
+
+    <div class="app-container">
+        <div id="content"></div>
+        <div class="controls">
+            <button id="btn-back" onclick="goBack()">← Zurück</button>
+            <button onclick="restart()">↻ Neustart</button>
+        </div>
+    </div>
+
+    <script>
+        // Service Worker Registration for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(function() {
+                console.log('Service Worker Registered');
+            });
+        }
+
+        let appHistory = [];
+        let currentStep = "start";
+
+        // Visual SVGs
+        const svgQRS = `<svg viewBox="0 0 100 50" fill="none" stroke-width="3"><path d="M10,25 L30,25 L40,5 L50,45 L60,25 L90,25"/></svg>`;
+        const svgPWave = `<svg viewBox="0 0 100 50" fill="none" stroke-width="3"><path d="M10,25 L20,25 Q30,10 40,25 L90,25"/></svg>`;
+
+        const algo = {
+            "start": { q: "Erregung irgendeine?", img: svgQRS, options: [ { text: "Nein", next: "q_kabel" }, { text: "Ja", next: "q_regelmassig" } ] },
+            "q_kabel": { q: "Kabel fest?", options: [ { text: "Nein", next: "res_kabel_fest" }, { text: "Ja", next: "q_amp_max" } ] },
+            "q_amp_max": { q: "Amplitude auf maximaler Größe?", options: [ { text: "Nein", next: "res_amp_max" }, { text: "Ja", next: "q_ableitung" } ] },
+            "q_ableitung": { q: "2. Ableitung ansehen. Erregung?", options: [ { text: "Nein", next: "res_asystolie" }, { text: "Ja", next: "res_zuruck" } ] },
+            
+            "q_regelmassig": { q: "Irgendeine Regelmäßigkeit?", options: [ { text: "Nein, keinerlei!", next: "q_puls_keinerlei" }, { text: "Ja", next: "q_qrs_breite" } ] },
+            
+            "q_puls_keinerlei": { q: "Puls?", options: [ { text: "Kein Puls", next: "res_kf" }, { text: "Puls vorhanden", next: "res_artefakt" } ] },
+
+            "q_qrs_breite": { q: "QRS-Komplex Breite", img: svgQRS, options: [ { text: "Breit (≥ 0,12 s)", next: "q_breit_p" }, { text: "Schmal (< 0,12 s)", next: "q_schmal_p" } ] },
+            
+            "q_breit_p": { q: "Breiter QRS: P-Wellen vorhanden?", img: svgPWave, options: [ { text: "Ohne P", next: "q_breit_frequenz" }, { text: "Mit P", next: "q_breit_pq" } ] },
+            "q_breit_frequenz": { q: "Herzfrequenz?", options: [ { text: "≤ 100", next: "q_breit_puls" }, { text: "> 100", next: "q_breit_amp_schwankung" } ] },
+            "q_breit_puls": { q: "Puls?", options: [ { text: "Ohne Puls", next: "res_agonal" }, { text: "Mit Puls", next: "q_breit_spikes_1" } ] },
+            "q_breit_spikes_1": { q: "Spikes?", options: [ { text: "Nein", next: "res_kammerersatz" }, { text: "Ja", next: "res_schrittmacher_puls" } ] },
+            "q_breit_amp_schwankung": { q: "Spindelförmige Amplitudenschwankung?", options: [ { text: "Ja", next: "res_torsade" }, { text: "Nein", next: "res_vt" } ] },
+            
+            "q_breit_pq": { q: "PQ-Zeit konstant?", options: [ { text: "Konstant", next: "q_breit_pq_zeit" }, { text: "Inkonstant", next: "res_av_block3_breit" } ] },
+            "q_breit_pq_zeit": { q: "PQ-Zeit", options: [ { text: "< 0,12 s", next: "res_wpw" }, { text: "≥ 0,12 s", next: "q_breit_spikes_2" } ] },
+            "q_breit_spikes_2": { q: "Spikes?", options: [ { text: "Ja", next: "res_schrittmacher_breit" }, { text: "Nein", next: "q_breit_oup" } ] },
+            "q_breit_oup": { q: "Oberer Umschlagspunkt (OUP) in V1 > 0,03 s?", options: [ { text: "Ja", next: "res_rgb" }, { text: "Nein", next: "q_breit_oup2" } ] },
+            "q_breit_oup2": { q: "OUP in V6 > 0,055 s?", options: [ { text: "Ja", next: "res_lgb" }, { text: "Nein", next: "res_diffuser_block" } ] },
+
+            "q_schmal_p": { q: "Schmaler QRS: P-Wellen vorhanden?", img: svgPWave, options: [ { text: "Mit P", next: "q_schmal_sagezahn" }, { text: "Ohne P", next: "q_schmal_rr" } ] },
+            "q_schmal_sagezahn": { q: "Sägezahnmuster?", options: [ { text: "Ja", next: "res_vorhofflattern" }, { text: "Nein", next: "q_schmal_pq_konstant" } ] },
+            "q_schmal_pq_konstant": { q: "PQ-Zeit konstant?", options: [ { text: "Inkonstant", next: "q_schmal_wenckebach" }, { text: "Konstant", next: "q_schmal_pq_dauer" } ] },
+            "q_schmal_wenckebach": { q: "PQ-Zeit wird immer länger bis ein QRS ausfällt?", options: [ { text: "Ja (Wenckebach-Periodik)", next: "res_av_block2_mobitz1" }, { text: "Keine Periodik", next: "res_av_block3_schmal" } ] },
+            "q_schmal_pq_dauer": { q: "PQ-Zeit", options: [ { text: "≥ 0,21 s", next: "res_av_block1" }, { text: "< 0,21 s", next: "q_schmal_ausfall" } ] },
+            "q_schmal_ausfall": { q: "P-QRS-T fällt gelegentlich komplett aus?", options: [ { text: "Mehr als zwei am Stück", next: "res_sa_block3" }, { text: "Ja (1-2 am Stück)", next: "res_sa_block2" }, { text: "Nein", next: "q_schmal_qrs_ausfall" } ] },
+            "q_schmal_qrs_ausfall": { q: "QRS fällt gelegentlich aus (P vorhanden)?", options: [ { text: "Ja", next: "res_av_block2_mobitz2" }, { text: "Nein", next: "q_schmal_hf" } ] },
+            "q_schmal_hf": { q: "Sinusrhythmus. Herzfrequenz/min?", options: [ { text: "< 60", next: "res_sinus_brady" }, { text: "60 - 100", next: "res_sinus_norm" }, { text: "> 100", next: "res_sinus_tachy" }, { text: "Variable Frequenz", next: "res_sinus_arrhythmie" } ] },
+
+            "q_schmal_rr": { q: "RR-Abstände regelmäßig?", options: [ { text: "Regelmäßig (Frequenz >100)", next: "q_schmal_svt" }, { text: "Unregelmäßig", next: "q_schmal_aa" } ] },
+            "q_schmal_svt": { q: "Diagnose?", options: [ { text: "Ja", next: "res_svt" }, { text: "Nein", next: "res_av_knoten" } ] },
+            "q_schmal_aa": { q: "Absolute Arrhythmie (AA). Herzfrequenz/min?", options: [ { text: "< 60", next: "res_brady_aa" }, { text: "60 - 100", next: "res_aa" }, { text: "> 100", next: "res_tachy_aa" } ] },
+
+            // Results & Colors (green=good/action, yellow=monitor, orange=warning, red=critical)
+            "res_kabel_fest": { diag: "Kabel festmachen! Zurück zum Start", color: "green" },
+            "res_amp_max": { diag: "Amplitude maximieren! Zurück zum Start", color: "yellow" },
+            "res_zuruck": { diag: "Zurück zum Start", color: "blue" },
+            "res_asystolie": { diag: "Asystolie", color: "red" },
+            "res_kf": { diag: "Kammerflimmern", color: "red" },
+            "res_artefakt": { diag: "Bewegungsartefakte! Zurück zum Start", color: "green" },
+            "res_agonal": { diag: "Agonaler Rhythmus", color: "red" },
+            "res_schrittmacher_puls": { diag: "Schrittmacherrhythmus", color: "blue" },
+            "res_kammerersatz": { diag: "Kammerersatzrhythmus", color: "orange" },
+            "res_torsade": { diag: "Torsade-de-pointes-Tachykardie", color: "red" },
+            "res_vt": { diag: "Kammertachykardie", color: "red" },
+            "res_av_block3_breit": { diag: "AV-Block III.°", color: "red" },
+            "res_wpw": { diag: "WPW-Syndrom", color: "orange" },
+            "res_schrittmacher_breit": { diag: "Schrittmacherrhythmus", color: "blue" },
+            "res_rgb": { diag: "Rechtsschenkelblock", color: "yellow" },
+            "res_lgb": { diag: "Linksschenkelblock", color: "orange" },
+            "res_diffuser_block": { diag: "Diffuser intraventrikulärer Block", color: "orange" },
+            "res_vorhofflattern": { diag: "Vorhofflattern", color: "orange" },
+            "res_av_block2_mobitz1": { diag: "AV-Block II.° Typ 1 (Mobitz I)", color: "yellow" },
+            "res_av_block3_schmal": { diag: "AV-Block III.°", color: "red" },
+            "res_av_block1": { diag: "AV-Block I.°", color: "yellow" },
+            "res_sa_block3": { diag: "SA-Block III.°", color: "red" },
+            "res_sa_block2": { diag: "SA-Block II.° Typ 2", color: "orange" },
+            "res_av_block2_mobitz2": { diag: "AV-Block II.° Typ 2 (Mobitz II)", color: "red" },
+            "res_sinus_brady": { diag: "Bradykard (Sinusrhythmus)", color: "yellow" },
+            "res_sinus_norm": { diag: "Normfrequent (Sinusrhythmus)", color: "green" },
+            "res_sinus_tachy": { diag: "Tachykard (Sinusrhythmus)", color: "yellow" },
+            "res_sinus_arrhythmie": { diag: "Sinusarrhythmie", color: "green" },
+            "res_svt": { diag: "SVT (Supraventrikuläre Tachykardie)", color: "red" },
+            "res_av_knoten": { diag: "AV-Knoten-Rhythmus", color: "orange" },
+            "res_brady_aa": { diag: "Bradyarrhythmia absoluta", color: "orange" },
+            "res_aa": { diag: "Absolute Arrhythmie (AA)", color: "yellow" },
+            "res_tachy_aa": { diag: "Tachyarrhythmia absoluta", color: "red" }
+        };
+
+        function render() {
+            const contentDiv = document.getElementById("content");
+            document.getElementById("btn-back").disabled = appHistory.length === 0;
+            const node = algo[currentStep];
+
+            if (node.diag) {
+                contentDiv.innerHTML = `
+                    <div class="diagnosis-box color-${node.color}">
+                        <div style="font-size:1.1rem; opacity:0.9; margin-bottom:5px;">Diagnose / Ergebnis:</div>
+                        <div class="diagnosis">${node.diag}</div>
+                    </div>
+                `;
+            } else {
+                let imgHtml = node.img ? `<div class="visual-example">${node.img}</div>` : '';
+                let html = `${imgHtml}<div class="question-text">${node.q}</div><div class="options-container">`;
+                node.options.forEach(opt => {
+                    html += `<button class="btn" onclick="goTo('${opt.next}')">${opt.text}</button>`;
+                });
+                html += `</div>`;
+                contentDiv.innerHTML = html;
+            }
+        }
+
+        function goTo(nextStep) { appHistory.push(currentStep); currentStep = nextStep; render(); }
+        function goBack() { if (appHistory.length > 0) { currentStep = appHistory.pop(); render(); } }
+        function restart() { appHistory = []; currentStep = "start"; render(); }
+
+        render();
+    </script>
+</body>
+</html>
